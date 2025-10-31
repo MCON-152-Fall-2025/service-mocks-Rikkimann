@@ -137,124 +137,180 @@ class RecipeServiceTest {
         @Test
         @DisplayName("returns list from repository")
         void returnsList() {
-            // TODO:
-            // when(recipeRepository.findAll()).thenReturn(List.of(...))
-            // assert same size/content; verify(findAll)
+            List<Recipe> recipes = List.of(savedRecipe(1L), savedRecipe(2L));
+            when(recipeRepository.findAll()).thenReturn(recipes);
 
+            List<Recipe> result = recipeService.getAllRecipes();
+
+            assertEquals(2, result.size());
+            assertEquals(recipes, result);
+            verify(recipeRepository).findAll();
+        }
+
+        // ------------------ getRecipeById ------------------
+
+        @Nested
+        @DisplayName("getRecipeById(long)")
+        class GetById {
+
+            @Test
+            @DisplayName("returns Optional.present when found")
+            void present() {
+                when(recipeRepository.findById(1L)).thenReturn(Optional.of(savedRecipe(1L)));
+
+                Optional<Recipe> result = recipeService.getRecipeById(1L);
+
+                assertTrue(result.isPresent());
+                assertEquals(1L, result.get().getId());
+            }
+
+            @Test
+            @DisplayName("returns Optional.empty when missing")
+            void empty() {
+                when(recipeRepository.findById(99L)).thenReturn(Optional.empty());
+
+                Optional<Recipe> result = recipeService.getRecipeById(99L);
+
+                assertTrue(result.isEmpty());
+            }
+
+        // ------------------ deleteRecipe ------------------
+
+        @Nested
+        @DisplayName("deleteRecipe(long)")
+        class DeleteRecipe {
+
+            @Test
+            @DisplayName("returns true when entity existed")
+            void returnsTrue_whenExists() {
+                long id = 1L;
+                when(recipeRepository.existsById(id)).thenReturn(true);
+                doNothing().when(recipeRepository).deleteById(id);
+
+                boolean result = recipeService.deleteRecipe(id);
+                assertTrue(result);
+
+                InOrder inOrder = inOrder(recipeRepository);
+                inOrder.verify(recipeRepository).existsById(id);
+                inOrder.verify(recipeRepository).deleteById(id);
+            }
+
+
+            @Test
+            @DisplayName("returns false when missing (never deletes)")
+            void returnsFalse_whenMissing() {
+                when(recipeRepository.existsById(2L)).thenReturn(false);
+
+                boolean result = recipeService.deleteRecipe(2L);
+                assertFalse(result);
+
+                verify(recipeRepository, never()).deleteById(anyLong());
+            }
+
+            @Test
+            @DisplayName("propagates delete error (doThrow)")
+            void propagatesDeleteError() {
+                long id = 1L;
+                when(recipeRepository.existsById(id)).thenReturn(true);
+                doThrow(new RuntimeException("Delete failed")).when(recipeRepository).deleteById(id);
+
+                assertThrows(RuntimeException.class, () -> recipeService.deleteRecipe(id));
+            }
+        // ------------------ updateRecipe ------------------
+
+        @Nested
+        @DisplayName("updateRecipe(long, Recipe)")
+        class UpdateRecipe {
+
+            @Test
+            @DisplayName("returns updated entity when exists")
+            void returnsUpdated_whenExists() {
+                long id = 1L;
+                Recipe existing = savedRecipe(id);
+                Recipe update = new Recipe(null, "Updated Title", "New desc",
+                        "sugar", "mix fast", 5);
+                Recipe savedUpdated = new Recipe(id, "Updated Title", "New desc",
+                        "sugar", "mix fast", 5);
+
+                when(recipeRepository.findById(id)).thenReturn(Optional.of(existing));
+                when(recipeRepository.save(any(Recipe.class))).thenReturn(savedUpdated);
+
+                Optional<Recipe> result = recipeService.updateRecipe(id, update);
+                assertTrue(result.isPresent());
+                assertEquals("Updated Title", result.get().getTitle());
+
+                verify(recipeRepository).save(recipeCaptor.capture());
+                Recipe captured = recipeCaptor.getValue();
+                assertEquals("Updated Title", captured.getTitle());
+            }
+            @Test
+            @DisplayName("returns empty when entity missing")
+            void returnsEmpty_whenMissing() {
+                when(recipeRepository.findById(99L)).thenReturn(Optional.empty());
+
+                Optional<Recipe> result = recipeService.updateRecipe(99L, newRecipeNoId());
+
+                assertTrue(result.isEmpty());
+                verify(recipeRepository, never()).save(any());
+            }}
+
+        // ------------------ patchRecipe ------------------
+
+        @Nested
+        @DisplayName("patchRecipe(long, Recipe)")
+        class PatchRecipe {
+
+            @Test
+            @DisplayName("applies only non-null fields (argThat)")
+            void appliesNonNullFields_only() {
+                long id = 1L;
+                Recipe existing = savedRecipe(id);
+                Recipe patch = new Recipe(null, "New Title", null, null, null, null);
+
+                when(recipeRepository.findById(id)).thenReturn(Optional.of(existing));
+                when(recipeRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+                Optional<Recipe> result = recipeService.patchRecipe(id, patch);
+                assertTrue(result.isPresent());
+                assertEquals("New Title", result.get().getTitle());
+
+                verify(recipeRepository).save(argThat(updated ->
+                        updated.getTitle().equals("New Title") &&
+                                updated.getDescription().equals("Moist chocolate cake") && // unchanged
+                                updated.getIngredients().equals("flour, eggs, cocoa")
+                ));
+            }
+
+            @Test
+            @DisplayName("returns empty when entity missing")
+            void returnsEmpty_whenMissing() {
+                when(recipeRepository.findById(99L)).thenReturn(Optional.empty());
+
+                Optional<Recipe> result = recipeService.patchRecipe(99L, newRecipeNoId());
+                assertTrue(result.isEmpty());
+
+                verify(recipeRepository, never()).save(any());
+            }}
+        // ------------------ extra practice ------------------
+
+        @Nested
+        @DisplayName("Advanced stubbing & verification")
+        class Advanced {
+
+            @Test
+            @DisplayName("consecutive stubs on existsById (true, false)")
+            void consecutiveStubs_existsById() {
+                when(recipeRepository.existsById(1L)).thenReturn(true, false);
+
+                boolean first = recipeRepository.existsById(1L);
+                boolean second = recipeRepository.existsById(1L);
+
+                assertTrue(first);
+                assertFalse(second);
+
+                verify(recipeRepository, times(2)).existsById(1L);
+                verifyNoMoreInteractions(recipeRepository);
+            }
         }
     }
-
-    // ------------------ getRecipeById ------------------
-
-    @Nested
-    @DisplayName("getRecipeById(long)")
-    class GetById {
-
-        @Test
-        @DisplayName("returns Optional.present when found")
-        void present() {
-            // TODO: stub findById(1L)->Optional.of(savedRecipe(1L)), assert present
-
-        }
-
-        @Test
-        @DisplayName("returns Optional.empty when missing")
-        void empty() {
-            // TODO: stub Optional.empty, assert empty
-
-        }
-    }
-
-    // ------------------ deleteRecipe ------------------
-
-    @Nested
-    @DisplayName("deleteRecipe(long)")
-    class DeleteRecipe {
-
-        @Test
-        @DisplayName("returns true when entity existed")
-        void returnsTrue_whenExists() {
-            // TODO:
-            // when(recipeRepository.existsById(id)).thenReturn(true)
-            // doNothing().when(recipeRepository).deleteById(id)
-            // assert true; verify order: existsById -> deleteById
-
-        }
-
-        @Test
-        @DisplayName("returns false when missing (never deletes)")
-        void returnsFalse_whenMissing() {
-            // TODO: existsById -> false; assert false; verify deleteById never called
-
-        }
-
-        @Test
-        @DisplayName("propagates delete error (doThrow)")
-        void propagatesDeleteError() {
-            // TODO: existsById -> true; doThrow(...) on deleteById; assertThrows
-
-        }
-    }
-
-    // ------------------ updateRecipe ------------------
-
-    @Nested
-    @DisplayName("updateRecipe(long, Recipe)")
-    class UpdateRecipe {
-
-        @Test
-        @DisplayName("returns updated entity when exists")
-        void returnsUpdated_whenExists() {
-            // TODO:
-            // findById -> present(existing)
-            // save(...) -> updatedSaved
-            // assert Optional.present & fields updated
-            // capture arg and assert values
-         }
-
-        @Test
-        @DisplayName("returns empty when entity missing")
-        void returnsEmpty_whenMissing() {
-            // TODO: findById -> empty; assert Optional.empty; verify save never called
-
-        }
-    }
-
-    // ------------------ patchRecipe ------------------
-
-    @Nested
-    @DisplayName("patchRecipe(long, Recipe)")
-    class PatchRecipe {
-
-        @Test
-        @DisplayName("applies only non-null fields (argThat)")
-        void appliesNonNullFields_only() {
-            // TODO:
-            // findById -> present(existing)
-            // provide partial with only title set
-            // repository.save returns the modified entity (use thenAnswer echo)
-            // verify save(argThat(...)) to ensure unchanged fields remain as-is
-        }
-
-        @Test
-        @DisplayName("returns empty when entity missing")
-        void returnsEmpty_whenMissing() {
-            // TODO: findById -> empty; assert Optional.empty; verify save never called
-
-         }
-    }
-
-    // ------------------ extra practice ------------------
-
-    @Nested
-    @DisplayName("Advanced stubbing & verification")
-    class Advanced {
-
-        @Test
-        @DisplayName("consecutive stubs on existsById (true, false)")
-        void consecutiveStubs_existsById() {
-            // TODO: when(existsById(1L)).thenReturn(true, false); verify two calls and no more
-
-         }
-    }
-}
+}}}
